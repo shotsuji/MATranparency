@@ -1,0 +1,127 @@
+---
+title: "MACodingTransparency_explore"
+author: "Sho"
+date: "8/8/2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyr)
+library(RCurl)
+library(ggplot2)
+
+
+#read in data
+url = getURL("https://docs.google.com/spreadsheets/d/e/2PACX-1vRSq8M2OV53eK1Mt99hxjnUcinfZuA5poxKPPPtN5bv12gKfiz_DHvhHHHbbjuzpINWM-jGvRBxrANg/pub?gid=0&single=true&output=csv")
+ma_data = read.csv(textConnection(url), skip =1)
+
+#get first row from google sheet for grouping (sry quite manual)
+groups = colnames(read.csv(textConnection(url)))
+groups = c(rep(groups[5],3*167),rep(groups[8],7*167),rep(groups[15],4*167),
+           rep(groups[19],3*167),rep(groups[22],5*167),rep(groups[27],1*167),rep(groups[28],3*167),rep(groups[31],5*167),rep(groups[36],3*167))
+
+
+#put into long format and recode 
+ma_data <- ma_data %>%
+  gather(criterion, value, -c(Coder:DOI)) %>%
+  mutate(value_num = recode(value, "n" = 0, "y" = 1)) %>%
+  mutate(groups = groups) %>%
+  mutate(year = case_when(DoP >=1990 & DoP < 2000 ~ 1990,
+                          DoP >=2000 & DoP < 2010 ~ 2000,
+                          DoP >=2010 ~ 2010)) %>%
+  mutate(x = 1)
+
+#overall summary
+ma_data_sum_all <- ma_data %>%
+  filter(value == "n" | value == "y" ) %>%
+  group_by(value, Citation) %>%
+  summarise(n = n())
+
+ma_data_sum_all_pc <- ma_data %>%
+  filter(value_num == 0 | value_num == 1 ) %>%
+  group_by(Citation,x) %>%
+  summarise(pc = mean(value_num))
+
+#summary by topic
+#bigger cats, and best and worst columns
+#relationships: correlation between funding, type of MA
+#scrape title word cloud
+ma_data_sum_bytopic <- ma_data %>%
+ filter(value == "n" | value == "y" ) %>%
+  group_by(value,value_num,groups,Citation) %>%
+  summarise(n = n()) 
+
+ma_data_sum_bytopic_pc <- ma_data %>%
+ filter(value_num == 0 | value_num == 1 ) %>%
+  group_by(groups,Citation,x) %>%
+  summarise(pc = mean(value_num))
+
+#summary by year
+ma_data_sum_byyear <- ma_data %>%
+ filter(value == "n" | value == "y" ) %>%
+  filter(!is.na(year)) %>%
+  group_by(value,value_num,year,Citation) %>%
+  summarise(n = n())
+
+ma_data_sum_byyear_pc <- ma_data %>%
+  filter(value_num == 0 | value_num == 1 ) %>%
+  filter(!is.na(year)) %>%
+  group_by(year,Citation,x) %>%
+  summarise(pc = mean(value_num))
+
+```
+
+## Count graphs
+```{r count, echo = F}
+#overall
+# ma_data_sum_all_plot = ggplot(ma_data_sum_all, aes(x = value, y = n, fill = value))+
+#   geom_boxplot() +
+#   scale_fill_manual(values = c("lightblue","darkblue"))+ 
+#   theme_light(base_size = 15) +
+#   theme(legend.position="none") +
+#   xlab("Reported")+
+#   ylab("Count by paper")+
+#   ggtitle("Reported overall")
+# ma_data_sum_all_plot
+# ggsave("ma_data_sum_all_plot.png",ma_data_sum_all_plot, height = 5, width = 5, units = "in" )
+
+ma_data_sum_all_pc_plot = ggplot(ma_data_sum_all_pc, aes(y = pc,x = x))+
+   geom_boxplot() +
+  geom_jitter(width = 0.1,height = 0, aes(alpha = 0.5,col = "blue"))+
+   theme_light(base_size = 15) +
+   theme(legend.position="none") +
+   ylab("Percentage reported")+
+   ggtitle("Reported overall")
+ ma_data_sum_all_pc_plot
+ ggsave("ma_data_sum_all_pc_plot.png",ma_data_sum_all_pc_plot, height = 5, width = 5, units = "in" )
+
+#by theme
+ma_data_sum_bytopic_pc_plot = ggplot(ma_data_sum_bytopic_pc, aes(y = pc, x = x))+
+  facet_wrap("groups") +
+  geom_boxplot() +
+  geom_jitter(width = 0.1,height = 0, aes(alpha = 0.5,col = "blue"))+
+  theme_light(base_size = 15) +
+  theme(legend.position="none") +
+  ylab("Percentage reported")+
+  ggtitle("Reported by topic")
+ma_data_sum_bytopic_pc_plot
+ggsave("ma_data_sum_bytopic_pc_plot.png",ma_data_sum_bytopic_pc_plot, height = 5, width = 5, units = "in" )
+
+#by year
+ma_data_sum_byyear_pc_plot = ggplot(ma_data_sum_byyear_pc, aes(y = pc, x = x))+
+  facet_wrap("year") +
+  geom_boxplot() +
+  geom_jitter(width = 0.1,height = 0, aes(alpha = 0.5,col = "blue"))+
+  theme_light(base_size = 15) +
+  theme(legend.position="none") +
+  ylab("Percentage reported")+
+  ggtitle("Reported by year")
+ma_data_sum_byyear_pc_plot
+ggsave("ma_data_sum_byyear_pc_plot.png",ma_data_sum_byyear_pc_plot, height = 5, width = 5, units = "in" )
+
+
+
+```
+
