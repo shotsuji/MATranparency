@@ -1,0 +1,29 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1543411646236.000,
+    "dirty" : false,
+    "encoding" : "",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "7E5C79D3",
+    "lastKnownWriteTime" : 3328012117610951265,
+    "last_content_update" : 1543411646236,
+    "path" : null,
+    "project_path" : null,
+    "properties" : {
+        "cacheKey" : "DAD08621",
+        "caption" : "ma_data_sum_bytopic_pc",
+        "contentUrl" : "grid_resource/gridviewer.html?env=&obj=ma_data_sum_bytopic_pc&cache_key=DAD08621",
+        "displayedObservations" : 1384,
+        "environment" : "",
+        "object" : "ma_data_sum_bytopic_pc",
+        "preview" : 0,
+        "totalObservations" : 1384,
+        "variables" : 4
+    },
+    "relative_order" : 6,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_dataframe"
+}

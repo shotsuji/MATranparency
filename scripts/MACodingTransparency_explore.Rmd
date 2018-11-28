@@ -5,28 +5,42 @@ date: "8/8/2018"
 output: pdf_document
 ---
 
+First exploration of MA transparency data
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(tidyr)
 library(RCurl)
 library(ggplot2)
+```
 
-
+```{r readin}
 #read in data
 url = getURL("https://docs.google.com/spreadsheets/d/e/2PACX-1vRSq8M2OV53eK1Mt99hxjnUcinfZuA5poxKPPPtN5bv12gKfiz_DHvhHHHbbjuzpINWM-jGvRBxrANg/pub?gid=0&single=true&output=csv")
 ma_data = read.csv(textConnection(url), skip =1)
 
+#some validity checks (not pertinent anymore since dealt with)
+#ma_data[duplicated(ma_data$Citation) == TRUE,] #this showed 3 duplicates in original sheet - checked and moved duplicates to duplicates sheet in google sheet with documentation
+#table(ma_data$Coder) #this shows that ST has 1, and EH 4 records more than required. ST simply coded one too much & this was moved to additional_codings sheet. EH had to MAs based on 3 separate searches each and therefore has 3 instead of 2 1 rows twice, leading to the 4 additional rows
+
+#remove columns not needed for ana
+ma_data_ana = ma_data %>%
+  select(-c(Eligibility...Design.record,Comments,Response))
+         
+
 #get first row from google sheet for grouping (sry quite manual)
 groups = colnames(read.csv(textConnection(url)))
-groups = c(rep(groups[5],3*167),rep(groups[8],7*167),rep(groups[15],4*167),
-           rep(groups[19],3*167),rep(groups[22],5*167),rep(groups[27],1*167),rep(groups[28],3*167),rep(groups[31],5*167),rep(groups[36],3*167))
+length_ma = dim(ma_data_ana)[1]
+groups = c(rep(groups[5],3*length_ma),rep(groups[8],6*length_ma),rep(groups[15],4*length_ma),
+           rep(groups[19],3*length_ma),rep(groups[22],5*length_ma),rep(groups[27],1*length_ma),rep(groups[28],3*length_ma),rep(groups[31],5*length_ma),rep(groups[36],2*length_ma))
 
 
 #put into long format and recode 
-ma_data <- ma_data %>%
+ma_data_long <- ma_data_ana %>%
   gather(criterion, value, -c(Coder:DOI)) %>%
-  mutate(value_num = recode(value, "n" = 0, "y" = 1)) %>%
+  mutate(value_num = recode(value, "n" = 0, "y" = 1, "correlation" = 1, "experimental" = 1, "group differences" = 1
+)) %>%
   mutate(groups = groups) %>%
   mutate(year = case_when(DoP >=1990 & DoP < 2000 ~ 1990,
                           DoP >=2000 & DoP < 2010 ~ 2000,
@@ -34,38 +48,29 @@ ma_data <- ma_data %>%
   mutate(x = 1)
 
 #overall summary
-ma_data_sum_all <- ma_data %>%
-  filter(value == "n" | value == "y" ) %>%
-  group_by(value, Citation) %>%
-  summarise(n = n())
-
-ma_data_sum_all_pc <- ma_data %>%
+ma_data_sum_all_pc <- ma_data_long %>%
   filter(value_num == 0 | value_num == 1 ) %>%
   group_by(Citation,x) %>%
   summarise(pc = mean(value_num))
+
+#percentage by colums
+ma_data_bycolum_pc <- ma_data_long %>%
+  filter(value_num == 0 | value_num == 1 ) %>%
+  group_by(groups,criterion,x) %>%
+  summarise(pc = mean(value_num))
+
 
 #summary by topic
 #bigger cats, and best and worst columns
 #relationships: correlation between funding, type of MA
 #scrape title word cloud
-ma_data_sum_bytopic <- ma_data %>%
- filter(value == "n" | value == "y" ) %>%
-  group_by(value,value_num,groups,Citation) %>%
-  summarise(n = n()) 
-
-ma_data_sum_bytopic_pc <- ma_data %>%
+ma_data_sum_bytopic_pc <- ma_data_long %>%
  filter(value_num == 0 | value_num == 1 ) %>%
   group_by(groups,Citation,x) %>%
   summarise(pc = mean(value_num))
 
 #summary by year
-ma_data_sum_byyear <- ma_data %>%
- filter(value == "n" | value == "y" ) %>%
-  filter(!is.na(year)) %>%
-  group_by(value,value_num,year,Citation) %>%
-  summarise(n = n())
-
-ma_data_sum_byyear_pc <- ma_data %>%
+ma_data_sum_byyear_pc <- ma_data_long %>%
   filter(value_num == 0 | value_num == 1 ) %>%
   filter(!is.na(year)) %>%
   group_by(year,Citation,x) %>%
@@ -76,17 +81,6 @@ ma_data_sum_byyear_pc <- ma_data %>%
 ## Count graphs
 ```{r count, echo = F}
 #overall
-# ma_data_sum_all_plot = ggplot(ma_data_sum_all, aes(x = value, y = n, fill = value))+
-#   geom_boxplot() +
-#   scale_fill_manual(values = c("lightblue","darkblue"))+ 
-#   theme_light(base_size = 15) +
-#   theme(legend.position="none") +
-#   xlab("Reported")+
-#   ylab("Count by paper")+
-#   ggtitle("Reported overall")
-# ma_data_sum_all_plot
-# ggsave("ma_data_sum_all_plot.png",ma_data_sum_all_plot, height = 5, width = 5, units = "in" )
-
 ma_data_sum_all_pc_plot = ggplot(ma_data_sum_all_pc, aes(y = pc,x = x))+
    geom_boxplot() +
   geom_jitter(width = 0.1,height = 0, aes(alpha = 0.5,col = "blue"))+
@@ -96,6 +90,18 @@ ma_data_sum_all_pc_plot = ggplot(ma_data_sum_all_pc, aes(y = pc,x = x))+
    ggtitle("Reported overall")
  ma_data_sum_all_pc_plot
  ggsave("ma_data_sum_all_pc_plot.png",ma_data_sum_all_pc_plot, height = 5, width = 5, units = "in" )
+ 
+#all separate
+ma_data_all_pc_plot = ggplot(ma_data_bycolum_pc, aes(y = pc,x = criterion))+
+  #facet_wrap("groups")+
+   geom_boxplot() +
+  geom_jitter(width = 0.1,height = 0, aes(alpha = 0.5,col = "blue"))+
+   theme_light(base_size = 15) +
+   theme(legend.position="none") +
+ theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+   ylab("Percentage reported")+
+   ggtitle("Reported overall")
+ma_data_all_pc_plot
 
 #by theme
 ma_data_sum_bytopic_pc_plot = ggplot(ma_data_sum_bytopic_pc, aes(y = pc, x = x))+
@@ -120,8 +126,6 @@ ma_data_sum_byyear_pc_plot = ggplot(ma_data_sum_byyear_pc, aes(y = pc, x = x))+
   ggtitle("Reported by year")
 ma_data_sum_byyear_pc_plot
 ggsave("ma_data_sum_byyear_pc_plot.png",ma_data_sum_byyear_pc_plot, height = 5, width = 5, units = "in" )
-
-
 
 ```
 

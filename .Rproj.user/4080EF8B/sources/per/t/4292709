@@ -1,0 +1,23 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1543413489560.000,
+    "dirty" : false,
+    "encoding" : "",
+    "folds" : "",
+    "hash" : "0",
+    "id" : "4292709",
+    "lastKnownWriteTime" : 4913279184593223686,
+    "last_content_update" : 1543413489560,
+    "path" : null,
+    "project_path" : null,
+    "properties" : {
+        "id" : "3dd9f71502d64a888c16923d81e0f2bd",
+        "name" : "ma_data_all_pc_plot",
+        "title" : "ma_data_all_pc_plot"
+    },
+    "relative_order" : 9,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "object_explorer"
+}
