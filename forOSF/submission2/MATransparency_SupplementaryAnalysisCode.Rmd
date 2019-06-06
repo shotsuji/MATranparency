@@ -1,0 +1,344 @@
+---
+title: "MACodingTransparency_explore"
+author: "ANONYMIZED FOR REVIEW"
+date: "8/8/2018"
+output: pdf_document
+---
+
+Code corresponding to additional analysis and figures not reported in MA transparency paper
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(RCurl)
+library(RColorBrewer)
+library(gridExtra)
+library(gtable)
+library(grid)
+library(sjPlot)
+```
+
+```{r readin, echo = F, warning=FALSE}
+
+### READ IN DATA
+
+ma_data = read.delim("../CodingSheet/CodingForm.txt", skip=1)
+colnames(ma_data) = c("Coder","Citation","DoP","DOI","Funding","MA_Type","Protocol","Population","Design","Design_Record","Intervention","Predictors","Outcomes","Published","Databases","Terms","Dates","Author_Contact","Abstract","Fulltext","Coding","Effect_Size_Type","Data_Handling","Dependent_Data","Model","Weighting","Publication_Bias","Number_Found","Number_Eligible_For_Coding","Number_Coded","Means_SDs","Sample_Size","Other_Data","Effect_Size","Moderators","Supplementary","Statistical_Code","Review_Size","Notes_Review_Size","Comments","Response")
+
+#some validity checks (not pertinent anymore since dealt with)
+#ma_data[duplicated(ma_data$Citation) == TRUE,] #this showed 3 duplicates in original sheet - checked and moved duplicates to duplicates sheet in google sheet with documentation
+#table(ma_data$Coder) #this shows that ST has 1, and EH 4 records more than required. ST simply coded one too much & this was moved to additional_codings sheet. EH had to MAs based on 3 separate searches each and therefore has 3 instead of 2 1 rows twice, leading to the 4 additional rows
+
+### FORMAT
+
+#remove columns not needed for ana
+ma_data_ana = ma_data %>%
+  #these columns are descriptive (MA type excluded later, but needed for sorting data)
+  select(-c(Design_Record,Comments,Response)) %>%
+  #this column was kept in original data file but we decided to not use it
+  select(-c(Number_Eligible_For_Coding)) %>%
+  #this column are removed for the moment since coding is tricky 
+  select(-c(Design)) %>%
+  #create variable that combines predictors & interventions
+  mutate(Indep_Var = case_when(Intervention == "y" ~ "y",
+                        Predictors == "y" ~ "y",
+                        TRUE ~ "n")) 
+
+#get larger grouping variables
+groups = c("Background","Eligibility","SearchProcedure","Screening/Coding","MA methods","Bias","SearchResults","SumStats","Reproducibility")
+length_ma = dim(ma_data_ana)[1]
+
+groups_all = c(rep(groups[1],2*length_ma),rep(groups[2],5*length_ma),rep(groups[3],4*length_ma),rep(groups[4],3*length_ma),rep(groups[5],5*length_ma),rep(groups[6],1*length_ma),rep(groups[7],2*length_ma),rep(groups[8],5*length_ma),rep(groups[9],2*length_ma),rep(groups[2],1*length_ma))
+
+#put into long format and recode 
+#overall
+ma_data_long <- ma_data_ana %>%
+  gather(criterion, value, -c(Coder:DOI,MA_Type,Review_Size,Notes_Review_Size)) %>%
+  mutate(value_num = recode(value, "n" = 0, "y" = 1)) %>%
+  mutate(groups = groups_all) %>%
+  mutate(year = case_when(DoP >=1990 & DoP < 2000 ~ 1990,
+                          DoP >=2000 & DoP < 2010 ~ 2000,
+                          DoP >=2010 ~ 2010)) %>%
+  mutate(x = "Overall") %>%
+  mutate(MA_Type = recode(MA_Type, "group differences" ="Group"),
+         MA_Type = recode(MA_Type, "experimental" ="Experimental"),
+         MA_Type = recode(MA_Type, "correlation" ="Correlation"))
+
+#by MA type
+ma_data_long_corr <- ma_data_long %>%
+  filter(MA_Type == "Correlation") %>%
+  filter(criterion != "Indep_Var" & criterion !="Intervention" & criterion !="MeansSDs")
+
+ma_data_long_group <- ma_data_long %>%
+  filter(MA_Type == "Group") %>%
+  filter(criterion != "Indep_Var" & criterion !="Intervention")
+
+ma_data_long_exp <- ma_data_long %>%
+  filter(MA_Type == "Experimental") %>%
+  filter(criterion != "Indep_Var" & criterion !="Predictors")
+```
+
+```{r subsets, echo = F, warning=FALSE}
+
+### CREATE SUBSETS FOR ANALYSIS 
+
+##OVERALL
+#overall summary - this should only include criteria that are applicable to all MA types
+ma_sum_all <- ma_data_long %>%
+  filter(criterion != "Predictors" & criterion != "Intervention") %>%
+  group_by(Citation,x,Review_Size) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100) 
+
+ma_sum_bytype <- ma_data_long %>%
+  filter(criterion != "Predictors" & criterion != "Intervention") %>%
+  group_by(Citation,x,Review_Size,MA_Type) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100) 
+
+#overall for regression analysis
+ma_all_predictors <- ma_data_long %>%
+  filter(criterion != "Predictors" & criterion != "Intervention"& Review_Size!=".") %>% #one case where review size is unknown
+  group_by(DoP,Citation,x,Review_Size,MA_Type) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100)
+
+#by group for by-group regression analysis
+ma_all_group <- ma_data_long %>%
+  filter(criterion != "Predictors" & criterion != "Intervention" & Review_Size!=".") %>% #one case where review size is unknown
+  group_by(DoP,Citation,x,Review_Size,groups,MA_Type,year) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100) %>%
+  mutate(groups2 = factor(groups, levels = c("Background","Eligibility","SearchProcedure","Screening/Coding","Ma methods","Bias","SearchResults","SumStats","Reproducibility")))
+
+ma_all_criterion <- ma_data_long %>%
+  filter(criterion != "Predictors" & criterion != "Intervention") %>%
+  group_by(criterion) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100,
+            sd = sd(value_num,na.rm=T)*100)
+
+
+ma_groups_predictors <- ma_data_long %>%
+  filter(criterion != "Predictors" & criterion != "Intervention") %>%
+  group_by(DoP,Citation,x,Review_Size,MA_Type,groups) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100)
+
+#percentage by individual column
+ma_bycolum_all <- ma_data_long %>%
+filter(criterion != "Predictors" & criterion != "Intervention") %>%
+  group_by(criterion,groups,x) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100) 
+
+
+#by year
+ma_byyear_all <- ma_data_long %>%
+filter(criterion != "Predictors" & criterion != "Intervention") %>%
+  #filter(!is.na(year)) %>%
+  group_by(year,Citation,x,Review_Size) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100)
+
+ma_byyear_cont_all <- ma_data_long %>%
+filter(criterion != "Predictors" & criterion != "Intervention") %>%
+  #filter(!is.na(year)) %>%
+  group_by(DoP,Citation,x,Review_Size,MA_Type) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100)
+
+ma_byyear_groups_cont_all <- ma_data_long %>%
+filter(criterion != "Predictors" & criterion != "Intervention") %>%
+  #filter(!is.na(year)) %>%
+  group_by(DoP,Citation,x,Review_Size,MA_Type,groups) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100)
+
+
+##BY MA TYPE
+#by MA type; select respective applicable criteria
+ma_sum_corr <-ma_data_long_corr %>%
+  group_by(Citation,x) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100)
+
+ma_sum_exp <-ma_data_long_exp %>%
+  group_by(Citation,x) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100)
+
+ma_sum_group <-ma_data_long_group %>%
+  group_by(Citation,x) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100)
+
+#BY MA TYPE & GROUP
+#by MA type & group; select respective applicable criteria
+ma_groups_corr <- ma_data_long_corr %>%
+  group_by(Citation,x,groups) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100) %>%
+  mutate(groups = factor(groups,levels = c("Background","Eligibility","SearchProcedure",
+                                           "Screening/Coding","MA methods","Bias","SearchResults","SumStats","Reproducibility")))
+
+ma_groups_exp <- ma_data_long_exp %>%
+  group_by(Citation,x,groups) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100) %>%
+  mutate(groups = factor(groups,levels = c("Background","Eligibility","SearchProcedure",
+                                           "Screening/Coding","MA methods","Bias","SearchResults","SumStats","Reproducibility")))
+
+ma_groups_group <- ma_data_long_group %>%
+  group_by(Citation,x,groups) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100) %>%
+  mutate(groups = factor(groups,levels = c("Background","Eligibility","SearchProcedure",
+                                           "Screening/Coding","MA methods","Bias","SearchResults","SumStats","Reproducibility")))
+```
+
+
+
+## Figures by MA design
+
+```{r bydesign, echo = F, warning=FALSE}
+
+
+##COLOR SCHEME
+colors = brewer.pal(11,"Set3")[c(1,3:8,10:11)]
+
+##BY MA DESIGN & THEMATIC GROUP
+ma_groups_corr_plot = ggplot(ma_groups_corr, aes(y = pc, x = groups,fill = groups))+
+   geom_violin(aes(alpha = 0.4),col = brewer.pal(9, "Oranges")[5]) +
+  geom_jitter(width = 0.2,height = 0.01, aes(alpha = 0.5),stat = "identity",pch=21,col = brewer.pal(9, "Oranges")[5])+
+   theme_light(base_size = 12) +
+    scale_fill_brewer(palette="Oranges") +
+   #theme(legend.position="none",axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.position="none",axis.title.x = element_blank(),axis.text.x = element_text(angle = 10, hjust = 1,size = 10)) +
+  ylim(0,100)+
+   ylab("Percentage reported")+
+   ggtitle("Correlational designs")
+#ma_groups_corr_plot
+
+ma_groups_exp_plot = ggplot(ma_groups_exp, aes(y = pc, x = groups,fill = groups))+
+   geom_violin(aes(alpha = 0.4),col =  brewer.pal(9, "Blues")[5]) +
+  geom_jitter(width = 0.2,height = 0.01, aes(alpha = 0.5),stat = "identity",pch=21,col =  brewer.pal(9, "Blues")[5])+
+   theme_light(base_size = 12) +
+  scale_fill_brewer(palette="Blues") +
+  #theme(legend.position="none",axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.position="none",axis.title.x = element_blank(),axis.text.x = element_text(angle = 10, hjust = 1,size = 10)) +
+  ylim(0,100)+
+   ylab("Percentage reported")+
+   ggtitle("Experimental designs")
+#ma_groups_exp_plot
+
+
+ma_groups_group_plot = ggplot(ma_groups_group, aes(y = pc, x = groups,fill = groups))+
+   geom_violin(aes(alpha = 0.4),col =  brewer.pal(9, "Purples")[5]) +
+  geom_jitter(width = 0.2,height = 0.01, aes(alpha = 0.5),stat = "identity",pch=21,col =  brewer.pal(9, "Purples")[5])+
+   theme_light(base_size = 12) +
+  scale_fill_brewer(palette="Purples") +
+  #theme(legend.position="none",axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(legend.position="none",axis.title.x = element_blank(),axis.text.x = element_text(angle = 10, hjust = 1,size = 10)) +
+  ylim(0,100)+
+   ylab("Percentage reported")+
+   ggtitle("Group designs")
+#ma_groups_group_plot
+
+grid.arrange(ma_groups_corr_plot, ma_groups_exp_plot, ma_groups_group_plot, 
+             ncol = 1, nrow = 3)
+
+
+```
+
+## Figures with LOESS line
+```{r loess, echo = F, warning = F}
+#BY YEAR
+ ma_sum_byyear_cont_plot = ggplot(ma_byyear_cont_all, aes(y = pc, x = DoP))+
+  geom_point(aes(alpha = 0.7,size = Review_Size,col = MA_Type)) +
+  #geom_jitter(width = 0.1,height = 0, aes(alpha = 0.5,col = factor(x)))+
+  theme_light(base_size = 15) +
+   theme(panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank()) +
+  theme(legend.position=c(0.8,0.15),legend.title = element_blank(),axis.title.y=element_blank(),axis.title.x=element_blank(),axis.text.x=element_text(size=14)) +
+  stat_smooth(data = ma_all_predictors, method="loess",se=TRUE,col="darkgrey")+
+  scale_color_manual(values = colors[2:4])+
+  scale_x_continuous(breaks = c(1990,1995,2000,2005,2010,2015))+
+  guides(size = FALSE)+
+  guides(alpha = FALSE)+
+  xlab("Publication Year")+
+  ggtitle("C. Publication Year")
+ma_sum_byyear_cont_plot
+
+#BY YEAR AND GROUP
+ ma_sum_byyear_group_plot = ggplot(ma_all_group, aes(y = pc, x = DoP, group = groups, col = groups))+
+  theme_light(base_size = 15) +
+   theme(panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank()) +
+  theme(legend.title = element_blank(),axis.title.y=element_blank(),axis.title.x=element_blank(),axis.text.x=element_text(size=14)) +
+  stat_smooth(method="loess",se=TRUE,alpha=0.2)+
+  scale_color_manual(values = c(colors))+
+  scale_x_continuous(breaks = c(1990,1995,2000,2005,2010,2015))+
+  guides(size = FALSE)+
+  guides(alpha = FALSE)+
+  xlab("Publication Year")+
+  ggtitle("D. Publication Year by Group")
+ma_sum_byyear_group_plot
+
+```
+
+## Additional figures
+```{r additional figures, echo = F, warning=FALSE}
+
+ 
+#all by year
+ma_sum_byyear_plot = ggplot(ma_byyear_all, aes(y = pc, x = x))+
+  facet_wrap("year") +
+  geom_violin(aes(alpha = 0.3,fill = factor(x))) +
+  geom_jitter(width = 0.1,height = 0, aes(alpha = 0.5,col = factor(x)))+
+  theme_light(base_size = 15) +
+   theme(panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank()) +
+  theme(legend.position="none",axis.title.x=element_blank(),
+        axis.text.x=element_blank(),
+        axis.ticks.x=element_blank()) +
+    scale_fill_manual(values = colors[1]) +
+    scale_color_manual(values = colors[1]) +
+  ylab("Percentage reported")+
+  ggtitle("Reported by year")
+ma_sum_byyear_plot
+
+
+# for graph by yearxgroup (not really working...)
+# lm.back <- lm(pc ~ DoP, data = ma_byyear_groups_cont_all[ma_byyear_groups_cont_all$groups=="Background",])
+# lm.bias <- lm(pc ~ DoP, data = ma_byyear_groups_cont_all[ma_byyear_groups_cont_all$groups=="Bias",])
+# lm.methods <- lm(pc ~ DoP, data = ma_byyear_groups_cont_all[ma_byyear_groups_cont_all$groups=="MA methods",])
+# lm.repro <- lm(pc ~ DoP, data = ma_byyear_groups_cont_all[ma_byyear_groups_cont_all$groups=="Reproducibility",])
+# lm.screen<- lm(pc ~ DoP, data = ma_byyear_groups_cont_all[ma_byyear_groups_cont_all$groups=="Screening/Coding",])
+# lm.methods <- lm(pc ~ DoP, data = ma_byyear_groups_cont_all[ma_byyear_groups_cont_all$groups=="MA methods",])
+# lm.sproc <- lm(pc ~ DoP, data = ma_byyear_groups_cont_all[ma_byyear_groups_cont_all$groups=="SearchProcedure",])
+# lm.sres <- lm(pc ~ DoP, data = ma_byyear_groups_cont_all[ma_byyear_groups_cont_all$groups=="SearchResults",])
+# lm.sstats <- lm(pc ~ DoP, data = ma_byyear_groups_cont_all[ma_byyear_groups_cont_all$groups=="SumStats",])
+# 
+# ma_sum_groups_cont_plot = ggplot(ma_byyear_cont_all, aes(y = pc, x = DoP))+
+#   geom_point(aes(alpha = 0.5,size = ReviewSize),col="darkgrey") +
+#   #geom_jitter(width = 0.1,height = 0, aes(alpha = 0.5,col = factor(x)))+
+#   theme_light(base_size = 15) +
+#    theme(panel.grid.major.x = element_blank(),
+#     panel.grid.minor = element_blank()) +
+#   theme(legend.position=c(0.8,0.15),legend.title = element_blank(),axis.title.y=element_blank(),axis.title.x=element_blank(),axis.text.x=element_text(size=14)) +
+#   geom_abline(intercept = lm.back$coefficients[1], slope = lm.back$coefficients[2],col=colors[1])+
+#   geom_abline(intercept = lm.eli$coefficients[1], slope = lm.eli$coefficients[2],col=colors[2])+
+#   geom_abline(intercept = lm.sproc$coefficients[1], slope = lm.sproc$coefficients[2],col=colors[3])+
+#   geom_abline(intercept = lm.screen$coefficients[1], slope = lm.screen$coefficients[2],col=colors[4])+
+#   geom_abline(intercept = lm.methods$coefficients[1], slope = lm.methods$coefficients[2],col=colors[5])+
+#   geom_abline(intercept = lm.bias$coefficients[1], slope = lm.bias$coefficients[2],col=colors[6])+
+#   geom_abline(intercept = lm.sres$coefficients[1], slope = lm.sres$coefficients[2],col=colors[7])+
+#   geom_abline(intercept = lm.sstats$coefficients[1], slope = lm.sstats$coefficients[2],col=colors[1])+
+#   geom_abline(intercept = lm.repro$coefficients[1], slope = lm.repro$coefficients[2],col=colors[2])+
+#   scale_color_manual(values = colors[2:4])+
+#   scale_x_continuous(breaks = c(1990,1995,2000,2005,2010,2015))+
+#   guides(size = FALSE)+
+#   guides(alpha = FALSE)+
+#   #ylab("% reported")+
+#   xlab("Publication Year")+
+#   ggtitle("C. Publication Year")
+# ma_sum_groups_cont_plot
+
+#all by review size 
+ma_sum_byrev_plot = ggplot(ma_sum_all, aes(y = as.numeric(as.character(Review_Size)), x = x))+
+  geom_violin(aes(alpha = 0.3,fill = factor(x))) +
+  geom_jitter(width = 0.1,height = 0, aes(alpha = 0.5,col = factor(x)))+
+  theme_light(base_size = 15) +
+  theme(legend.position="none",legend.title = element_blank()) +
+    scale_fill_manual(values = colors[1]) +
+    scale_color_manual(values = colors[1]) +
+  ylab("Review size")+
+  ggtitle("Review size")
+ma_sum_byrev_plot
+
+```

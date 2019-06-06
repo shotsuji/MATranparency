@@ -1,0 +1,22 @@
+{
+    "collab_server" : "",
+    "contents" : "",
+    "created" : 1559723433792.000,
+    "dirty" : false,
+    "encoding" : "UTF-8",
+    "folds" : "",
+    "hash" : "3713525638",
+    "id" : "D7A77234",
+    "lastKnownWriteTime" : 1554451397,
+    "last_content_update" : 1554451397,
+    "path" : "~/Documents/Projects/SocialWord/11m/ElevenMonths_Analysis_EyetrackR_NEW.R",
+    "project_path" : null,
+    "properties" : {
+        "cursorPosition" : "231,62",
+        "scrollLine" : "223"
+    },
+    "relative_order" : 10,
+    "source_on_save" : false,
+    "source_window" : "",
+    "type" : "r_source"
+}

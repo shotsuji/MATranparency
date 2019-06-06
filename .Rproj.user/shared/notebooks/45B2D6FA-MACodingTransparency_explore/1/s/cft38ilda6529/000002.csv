@@ -1,0 +1,8 @@
+"0","ma_all_group <- ma_data_long %>%
+  filter(criterion != ""Predictors"" & criterion != ""Intervention"") %>%
+  group_by(DoP,Citation,x,Review_Size,group) %>%
+  summarise(pc = mean(value_num,na.rm=T)*100)
+"
+"2","Error in grouped_df_impl(data, unname(vars), drop) : 
+  Column `group` is unknown
+"

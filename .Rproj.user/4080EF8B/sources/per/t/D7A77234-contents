@@ -1,0 +1,248 @@
+#script for analysis of SWF 11mo data, e1, e2, e3
+
+library(ggplot2)
+library(gridExtra)
+library(lme4)
+library(stringr)
+library(eyetrackingR)
+
+#Put together all data and add CDIs
+e1<-read.table("data/SWF_E1/all_400_3000_nosaccades.txt",header=TRUE)
+e1$experiment<-"Live social"
+e2<-read.table("data/SWF_E2/results/all_400_3000_nosaccades.txt",header=TRUE)
+e2$experiment<-"On-screen social"
+e3<-read.table("data/SWF_E3/results/all_400_3000_nosaccades.txt",header=TRUE)
+e3$experiment<-"On-screen passive"
+
+
+cdi<-read.delim("C:/Users/Sho/Documents/SocialWord/France/CDI_E1.txt",header=TRUE)
+e1<-merge(e1,cdi,by="SID",all.x=T)
+e1$high<-1
+e1$high[e1$Comprehension<median(e1$Comprehension,na.rm=TRUE)]<-0
+
+cdi<-read.delim("C:/Users/Sho/Documents/SocialWord/France/CDI_E2.txt",header=TRUE)
+e2<-merge(e2,cdi,by="SID",all.x=T)
+e2<-subset(e2, select = -c(Production,Babillage1,Babillage2) )
+e2$high<-1
+e2$high[e2$Comprehension<median(e2$Comprehension,na.rm=TRUE)]<-0
+
+cdi<-read.delim("C:/Users/Sho/Documents/SocialWord/France/CDI_E3.txt",header=TRUE)
+e3<-merge(e3,cdi,by="SID",all.x=T)
+e3<-subset(e3, select = -c(Production,Babillage1,Babillage2) )
+e3$high<-1
+e3$high[e3$Comprehension<median(e3$Comprehension,na.rm=TRUE)]<-0
+
+
+all<-rbind(e1,e2, e3)
+
+
+
+all$experiment<-factor(all$experiment)
+all<-all[all$TrialId>0,]
+#all<-all[all$Saccade==0,]
+all$Away<-0
+all$Away[is.na(all$OnTarget)]<-1
+all<-all[!is.na(all$SID),]
+
+#make proper trial variable for inclusion as random factor in analysis
+Object1<-factor(all$Object)
+Object1[Object1=="o1.jpg"]<-"o1"
+Object1[Object1=="o3.jpg"]<-"o3"
+Object1<-factor(Object1)
+all$TrialUnique<-paste(all$Word, all$Targetside)
+
+all$SID<-factor(all$SID)
+all$Trial<-factor(all$Trial)
+
+
+write.table(all,"C:/Users/Sho/Documents/SocialWord/France/France_11_for_eyetrackR.txt")
+
+all = read.delim("data/France_11_for_eyetrackR.txt", sep=" ",header = TRUE, na.strings="NA")
+
+
+#transform into eyetrackingr data format
+data <- make_eyetrackingr_data(all, 
+                               participant_column = "SID",
+                               trial_column = "TrialUnique",
+                               time_column = "WordOnset",
+                               trackloss_column = "Away",
+                               aoi_columns = 'OnTarget',
+                               treat_non_aoi_looks_as_missing = FALSE
+)
+
+#make window of interest 
+response_window <- subset_by_window(data,window_start_time=400,window_end_time=3000,rezero=F)
+
+trackloss <- trackloss_analysis(data = response_window)
+
+
+#exclude trials with less than 25% looks in time window
+response_window_clean <- clean_by_trackloss(data = response_window, trial_prop_thresh = .75) #removed  70  trials.
+#SID 141 201 318 346 looses all trials by that
+
+intermediate_summary <- describe_data(response_window_clean, 'OnTarget', 'SID')
+
+
+#exclude babies with <2 trials (not a standard procuedure in eyetrackingr)
+response_window_clean_2<-merge(response_window_clean,intermediate_summary[,c(1,9)],by='SID')
+response_window_clean_2<-response_window_clean_2[response_window_clean_2$NumTrials>1,]
+response_window_clean_2$SID<-factor(response_window_clean_2$SID)
+
+#transform this into eyetrackingr format again (since my manual exclusion deleted some info)
+response_window_clean_3 <- make_eyetrackingr_data(response_window_clean_2, 
+                               participant_column = "SID",
+                               trial_column = "TrialUnique",
+                               time_column = "WordOnset",
+                               trackloss_column = "Away",
+                               aoi_columns = 'OnTarget',
+                               treat_non_aoi_looks_as_missing = FALSE
+)
+
+final_summary <- describe_data(response_window_clean_3, 'OnTarget', 'SID')
+mean(final_summary$NumTrials) #3.572917
+sd(final_summary$NumTrials) #0.7070292
+final_summary$exp<-substring(final_summary$SID,1,1)
+table(final_summary$exp)
+tapply(final_summary$NumTrials, final_summary$exp, mean, na.rm=T)
+
+
+##trials excluded by experiment
+trackloss$exp<-substring(trackloss$SID,1,1)
+length(trackloss$TracklossSamples[trackloss$TracklossForTrial>0.75 & trackloss$exp == "1"])/
+  length(trackloss$TracklossSamples[trackloss$exp == "1"])
+length(trackloss$TracklossSamples[trackloss$TracklossForTrial>0.75 & trackloss$exp == "2"])/
+  length(trackloss$TracklossSamples[trackloss$exp == "2"])
+length(trackloss$TracklossSamples[trackloss$TracklossForTrial>0.75 & trackloss$exp == "3"])/
+  length(trackloss$TracklossSamples[trackloss$exp == "3"])
+
+trackloss_clean <- trackloss_analysis(data = response_window_clean_3)
+trackloss_clean_subjects <- unique(trackloss_clean[, c('SID','TracklossForParticipant')])
+mean(1 - trackloss_clean_subjects$TracklossForParticipant) # 0.870617
+sd(1- trackloss_clean_subjects$TracklossForParticipant) #  0.1504131
+
+##window analysis
+data_summary <- describe_data(response_window_clean_3, describe_column='OnTarget', group_columns=c('experiment','SID'))
+plot(data_summary)
+
+
+#ES: 
+tapply(data_summary$Mean,data_summary$experiment,mean)
+tapply(data_summary$Mean,data_summary$experiment,sd)
+
+####GCA
+
+# aggregate across trials within subjects in time analysis
+response_time <- make_time_sequence_data(response_window_clean_3, time_bin_size = 100, 
+                                         predictor_columns = c("experiment","Comprehension","high"),
+                                         aois = "OnTarget"
+)
+
+# visualize time results
+plot(response_time, predictor_column = "experiment", dv="Elog") + 
+  theme_light()
+
+# sum-code and center our predictor:
+response_time$expC <- relevel(response_time$experiment,"On-screen passive")
+response_time$expC <- relevel(response_time$expC,"On-screen social")
+response_time$Elog[is.na(response_time$Prop)]<-NA
+
+# # Construct model
+model_time_sequence <- lmer(Elog ~ expC*(ot1+ot2+ot3) + (ot1+ot2+ot3|SID)+(ot1+ot2+ot3| TrialUnique),
+                            data = response_time, REML = FALSE)
+broom::tidy(model_time_sequence, effects = "fixed")
+
+french_comp<-drop1(model_time_sequence, ~., test="Chi")
+
+plot(response_time, predictor_column = "expC", dv = "Elog", model = model_time_sequence)
+
+coefs.full_f_1 <- as.data.frame(coef(summary(model_time_sequence)))
+coefs.full_f_1$p <- format.pval(2*(1-pnorm(abs(coefs.full_f_1[,"t value"]))))
+coefs.full_f_1
+
+###releveling for inspection of intercept
+response_time$expC <- relevel(response_time$expC,"On-screen passive")
+model_f2 <- lmer(Elog ~ expC*(ot1+ot2+ot3) + (ot1+ot2+ot3|SID)+(ot1+ot2+ot3| TrialUnique),
+                            data = response_time, REML = FALSE)
+coefs.full_f_2 <- as.data.frame(coef(summary(model_f2)))
+coefs.full_f_2$p <- format.pval(2*(1-pnorm(abs(coefs.full_f_2[,"t value"]))))
+coefs.full_f_2
+
+response_time$expC <- relevel(response_time$expC,"Live social")
+model_f3 <- lmer(Elog ~ expC*(ot1+ot2+ot3) + (ot1+ot2+ot3|SID)+(ot1+ot2+ot3| TrialUnique),
+                 data = response_time, REML = FALSE)
+coefs.full_f_3 <- as.data.frame(coef(summary(model_f3)))
+coefs.full_f_3$p <- format.pval(2*(1-pnorm(abs(coefs.full_f_3[,"t value"]))))
+coefs.full_f_3
+
+sink("C:/Users/Sho/Documents/SocialWord/Final_analyses/ElevenMonths_logit_French.txt")
+summary(model_time_sequence)
+french_comp
+coefs.full_f_1
+coefs.full_f_2
+coefs.full_f_3
+sink()
+
+
+####Figures with longer time window
+#merge trackloss column with longer time window
+
+french_long <- subset_by_window(data,window_start_time=-500,window_end_time=4000,rezero=F)
+french_long<-merge(french_long,trackloss,by=c("SID","TrialUnique"))
+french_long<-french_long[french_long$TracklossForTrial<0.75,]
+
+#exclude babies with <2 trials (not a standard procuedure in eyetrackingr)
+french_long<-merge(french_long,intermediate_summary[,c(1,8)],by='SID')
+french_long<-french_long[french_long$NumTrials>1,]
+french_long$SID<-factor(french_long$SID)
+
+
+#transform this into eyetrackingr format again (since my manual exclusion deleted some info)
+french_window_clean_4 <- make_eyetrackingr_data(french_long, 
+                                                participant_column = "SID",
+                                                trial_column = "TrialUnique",
+                                                time_column = "WordOnset",
+                                                trackloss_column = "Away",
+                                                aoi_columns = 'OnTarget',
+                                                treat_non_aoi_looks_as_missing = FALSE
+)
+
+french_time4 <- make_time_sequence_data(french_window_clean_4, time_bin_size = 100, 
+                                        predictor_columns = c("experiment","Comprehension"),
+                                        aois = "OnTarget")
+
+french_time4$expLabel<-"Live social"
+french_time4$expLabel[french_time4$experiment == "On-screen social"] <- "Socially enriched"
+french_time4$expLabel[french_time4$experiment == "On-screen passive"] <- "Matched"
+french_time4$expLabel<-factor(french_time4$expLabel)
+french_time4$expLabel<-relevel(french_time4$expLabel,"Matched")
+french_time4$expLabel<-relevel(french_time4$expLabel,"Socially enriched")
+
+response_time$expLabel<-"Live social"
+response_time$expLabel[response_time$experiment == "On-screen social"] <- "Socially enriched"
+response_time$expLabel[response_time$experiment == "On-screen passive"] <- "Matched"
+response_time$expLabel<-factor(response_time$expLabel)
+response_time$expLabel<-relevel(response_time$expLabel,"Matched")
+response_time$expLabel<-relevel(response_time$expLabel,"Socially enriched")
+rt<-response_time[!is.na(response_time$Elog),]
+
+# visualize time results
+
+French<-ggplot(french_time4, aes(Time, Elog, color=expLabel,fill=expLabel)) +
+  geom_rect(data=data.frame(x1=0, x2=1, x3=0, x4=1),aes(xmin=400, xmax=2900, ymin=-1.1, ymax=1.1), fill="grey", alpha=0.3,size=0,show.legend=F,inherit.aes=F)+
+  #stat_smooth(method="auto",size=1.1,linetype="solid",alpha=0.1)+
+  stat_summary(fun.data=mean_se, geom="pointrange",alpha=0.5) +
+  #stat_summary(data=rt, aes(y=fitted(model_time_sequence)), fun.y=mean, geom="line",cex=2)+
+  theme_bw(base_size=16)+
+  theme(legend.title=element_blank(),plot.title = element_text(vjust=0.9))+
+  scale_fill_manual(values=c("dodgerblue2","hotpink2", "springgreen2"))+
+  scale_colour_manual(values=c("dodgerblue2","hotpink2", "springgreen2"))+
+  coord_cartesian(xlim=c(100,4000),ylim = c(-1,1))+
+  labs(y="Elog(Target fixation proportion)", x="Time since word onset (ms)")+
+  theme(legend.justification=c(1,0), legend.position=c(1,0), legend.text = element_text(size = 14),legend.background = element_rect(fill="transparent"))+
+  annotate("segment", x = c(-100), xend = c(3100),y = c(0),yend = c(0),lineend="square",colour="black",linetype="dashed",size=1)
+French
+
+ggsave("C:/Users/Sho/Documents/SocialWord/Final_analyses/ElevenMonths_logit_French.tiff",French,height=6,width=8,dpi=400)
+ggsave("C:/Users/Sho/Documents/SocialWord/Final_analyses/ElevenMonths_logit_French.pdf",French,height=6,width=8,dpi=400)
+ggsave("C:/Users/Sho/Documents/SocialWord/Final_analyses/ElevenMonths_logit_French.png",French,height=6,width=8,dpi=400)
+

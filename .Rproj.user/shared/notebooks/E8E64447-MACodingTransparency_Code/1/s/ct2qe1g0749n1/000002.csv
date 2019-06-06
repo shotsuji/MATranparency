@@ -1,0 +1,4 @@
+"0","### READ IN DATA"
+"0","ma_data = read.delim(""CodingForm.txt"", skip=1)"
+"2","Error in file(file, ""rt"") : cannot open the connection
+"

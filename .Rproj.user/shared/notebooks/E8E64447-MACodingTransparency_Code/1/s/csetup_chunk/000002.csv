@@ -1,0 +1,7 @@
+"0","knitr::opts_chunk$set(echo = TRUE)"
+"0","library(tidyverse)"
+"0","library(RCurl)"
+"0","library(RColorBrewer)"
+"0","library(gridExtra)"
+"0","library(gtable)"
+"0","library(grid)"
